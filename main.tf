@@ -1,190 +1,75 @@
-resource "aws_s3_bucket" "upload" {
-  bucket = var.upload_bucket_name
-
-  tags = {
-    Name        = "${var.project_name}-upload"
+locals {
+  common_tags = {
+    Project     = var.project_name
     Environment = "production"
+    ManagedBy   = "Terraform"
   }
 }
 
-resource "aws_s3_bucket_versioning" "upload" {
-  bucket = aws_s3_bucket.upload.id
+module "upload_bucket" {
+  source = "./modules/s3"
 
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
+  bucket_name         = var.upload_bucket_name
+  versioning_enabled  = true
+  block_public_access = true
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "upload" {
-  bucket = aws_s3_bucket.upload.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+  lifecycle_rules = [
+    {
+      id              = "delete-old-uploads"
+      status          = "Enabled"
+      expiration_days = var.upload_retention_days
+      noncurrent_version_expiration_days = 30
     }
-    bucket_key_enabled = true
-  }
+  ]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-upload"
+  })
 }
 
-resource "aws_s3_bucket_public_access_block" "upload" {
-  bucket = aws_s3_bucket.upload.id
+module "processed_bucket" {
+  source = "./modules/s3"
 
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
+  bucket_name         = var.processed_bucket_name
+  versioning_enabled  = true
+  block_public_access = true
 
-resource "aws_s3_bucket_lifecycle_configuration" "upload" {
-  bucket = aws_s3_bucket.upload.id
-
-  rule {
-    id     = "delete-old-uploads"
-    status = "Enabled"
-
-    expiration {
-      days = var.upload_retention_days
+  lifecycle_rules = [
+    {
+      id     = "transition-to-ia"
+      status = "Enabled"
+      transitions = [
+        {
+          days          = 90
+          storage_class = "STANDARD_IA"
+        },
+        {
+          days          = 180
+          storage_class = "GLACIER_IR"
+        }
+      ]
     }
+  ]
 
-    noncurrent_version_expiration {
-      noncurrent_days = 30
-    }
-  }
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-processed"
+  })
 }
 
-resource "aws_s3_bucket" "processed" {
-  bucket = var.processed_bucket_name
+module "image_queue" {
+  source = "./modules/sqs"
 
-  tags = {
-    Name        = "${var.project_name}-processed"
-    Environment = "production"
-  }
-}
-
-resource "aws_s3_bucket_versioning" "processed" {
-  bucket = aws_s3_bucket.processed.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "processed" {
-  bucket = aws_s3_bucket.processed.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-    bucket_key_enabled = true
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "processed" {
-  bucket = aws_s3_bucket.processed.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_lifecycle_configuration" "processed" {
-  bucket = aws_s3_bucket.processed.id
-
-  rule {
-    id     = "transition-to-ia"
-    status = "Enabled"
-
-    transition {
-      days          = 90
-      storage_class = "STANDARD_IA"
-    }
-
-    transition {
-      days          = 180
-      storage_class = "GLACIER_IR"
-    }
-  }
-}
-
-resource "aws_s3_bucket_notification" "upload_notification" {
-  bucket = aws_s3_bucket.upload.id
-
-  queue {
-    queue_arn     = aws_sqs_queue.image_queue.arn
-    events        = ["s3:ObjectCreated:*"]
-    filter_suffix = ".jpg"
-  }
-
-  queue {
-    queue_arn     = aws_sqs_queue.image_queue.arn
-    events        = ["s3:ObjectCreated:*"]
-    filter_suffix = ".jpeg"
-  }
-
-  queue {
-    queue_arn     = aws_sqs_queue.image_queue.arn
-    events        = ["s3:ObjectCreated:*"]
-    filter_suffix = ".png"
-  }
-
-  depends_on = [aws_sqs_queue_policy.image_queue_policy]
-}
-
-resource "aws_sqs_queue" "image_dlq" {
-  name                      = "${var.project_name}-dlq"
-  message_retention_seconds = var.sqs_message_retention
-  sqs_managed_sse_enabled   = true
-
-  tags = {
-    Name        = "${var.project_name}-dlq"
-    Environment = "production"
-  }
-}
-
-resource "aws_sqs_queue" "image_queue" {
-  name                       = "${var.project_name}-queue"
+  queue_name                 = "${var.project_name}-queue"
   visibility_timeout_seconds = var.sqs_visibility_timeout
   message_retention_seconds  = var.sqs_message_retention
-  sqs_managed_sse_enabled    = true
-  receive_wait_time_seconds  = 20
+  enable_dlq                 = true
+  max_receive_count          = var.dlq_max_receive_count
 
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.image_dlq.arn
-    maxReceiveCount     = var.dlq_max_receive_count
-  })
-
-  tags = {
-    Name        = "${var.project_name}-queue"
-    Environment = "production"
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
-  alarm_name          = "${var.project_name}-dlq-messages"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "ApproximateNumberOfMessagesVisible"
-  namespace           = "AWS/SQS"
-  period              = 300
-  statistic           = "Average"
-  threshold           = 1
-  alarm_description   = "Alert when messages appear in DLQ"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    QueueName = aws_sqs_queue.image_dlq.name
-  }
-
-  tags = {
-    Name        = "${var.project_name}-dlq-alarm"
-    Environment = "production"
-  }
+  tags = local.common_tags
 }
 
 resource "aws_sqs_queue_policy" "image_queue_policy" {
-  queue_url = aws_sqs_queue.image_queue.id
+  queue_url = module.image_queue.queue_url
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -195,15 +80,39 @@ resource "aws_sqs_queue_policy" "image_queue_policy" {
           Service = "s3.amazonaws.com"
         }
         Action   = "sqs:SendMessage"
-        Resource = aws_sqs_queue.image_queue.arn
+        Resource = module.image_queue.queue_arn
         Condition = {
           ArnEquals = {
-            "aws:SourceArn" = aws_s3_bucket.upload.arn
+            "aws:SourceArn" = module.upload_bucket.bucket_arn
           }
         }
       }
     ]
   })
+}
+
+resource "aws_s3_bucket_notification" "upload_notification" {
+  bucket = module.upload_bucket.bucket_id
+
+  queue {
+    queue_arn     = module.image_queue.queue_arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_suffix = ".jpg"
+  }
+
+  queue {
+    queue_arn     = module.image_queue.queue_arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_suffix = ".jpeg"
+  }
+
+  queue {
+    queue_arn     = module.image_queue.queue_arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_suffix = ".png"
+  }
+
+  depends_on = [aws_sqs_queue_policy.image_queue_policy]
 }
 
 resource "aws_iam_role" "lambda_role" {
@@ -222,10 +131,9 @@ resource "aws_iam_role" "lambda_role" {
     ]
   })
 
-  tags = {
-    Name        = "${var.project_name}-lambda-role"
-    Environment = "production"
-  }
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-lambda-role"
+  })
 }
 
 resource "aws_iam_role_policy" "lambda_policy" {
@@ -242,7 +150,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "s3:GetObject",
           "s3:GetObjectVersion"
         ]
-        Resource = "${aws_s3_bucket.upload.arn}/*"
+        Resource = "${module.upload_bucket.bucket_arn}/*"
       },
       {
         Sid    = "S3WriteProcessedBucket"
@@ -250,7 +158,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action = [
           "s3:PutObject"
         ]
-        Resource = "${aws_s3_bucket.processed.arn}/*"
+        Resource = "${module.processed_bucket.bucket_arn}/*"
       },
       {
         Sid    = "SQSProcessMessages"
@@ -261,7 +169,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "sqs:GetQueueAttributes",
           "sqs:ChangeMessageVisibility"
         ]
-        Resource = aws_sqs_queue.image_queue.arn
+        Resource = module.image_queue.queue_arn
       },
       {
         Sid    = "SQSSendToDLQ"
@@ -269,7 +177,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action = [
           "sqs:SendMessage"
         ]
-        Resource = aws_sqs_queue.image_dlq.arn
+        Resource = module.image_queue.dlq_arn
       },
       {
         Sid    = "CloudWatchLogs"
@@ -278,7 +186,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "${aws_cloudwatch_log_group.lambda_logs.arn}:*"
+        Resource = "${module.lambda_processor.log_group_arn}:*"
       },
       {
         Sid    = "XRayTracing"
@@ -299,106 +207,34 @@ data "archive_file" "lambda_zip" {
   output_path = "${path.module}/lambda_function.zip"
 }
 
-resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${var.project_name}-function"
-  retention_in_days = var.log_retention_days
+module "lambda_processor" {
+  source = "./modules/lambda"
 
-  tags = {
-    Name        = "${var.project_name}-logs"
-    Environment = "production"
-  }
-}
-
-resource "aws_lambda_function" "image_processor" {
-  filename         = data.archive_file.lambda_zip.output_path
-  function_name    = "${var.project_name}-function"
-  role            = aws_iam_role.lambda_role.arn
-  handler         = "handler.lambda_handler"
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 60
-  memory_size     = 512
-
-  environment {
-    variables = {
-      PROCESSED_BUCKET = aws_s3_bucket.processed.id
-      IMAGE_WIDTH      = var.image_width
-      IMAGE_HEIGHT     = var.image_height
-      LOG_LEVEL        = var.log_level
-    }
-  }
-
-  dead_letter_config {
-    target_arn = aws_sqs_queue.image_dlq.arn
-  }
-
-  tracing_config {
-    mode = "Active"
-  }
-
+  function_name                  = "${var.project_name}-function"
+  filename                       = data.archive_file.lambda_zip.output_path
+  handler                        = "handler.lambda_handler"
+  runtime                        = "python3.11"
+  role_arn                       = aws_iam_role.lambda_role.arn
+  source_code_hash               = data.archive_file.lambda_zip.output_base64sha256
+  timeout                        = 60
+  memory_size                    = 512
   reserved_concurrent_executions = var.lambda_reserved_concurrency
+  log_retention_days             = var.log_retention_days
+  dead_letter_target_arn         = module.image_queue.dlq_arn
+  tracing_mode                   = "Active"
 
-  tags = {
-    Name        = "${var.project_name}-function"
-    Environment = "production"
+  environment_variables = {
+    PROCESSED_BUCKET = module.processed_bucket.bucket_id
+    IMAGE_WIDTH      = tostring(var.image_width)
+    IMAGE_HEIGHT     = tostring(var.image_height)
+    LOG_LEVEL        = var.log_level
   }
 
-  depends_on = [aws_cloudwatch_log_group.lambda_logs]
-}
-
-resource "aws_lambda_event_source_mapping" "sqs_trigger" {
-  event_source_arn = aws_sqs_queue.image_queue.arn
-  function_name    = aws_lambda_function.image_processor.arn
-  batch_size       = 10
-  enabled          = true
-
-  scaling_config {
-    maximum_concurrency = var.lambda_max_concurrency
-  }
-
+  event_source_arn        = module.image_queue.queue_arn
+  batch_size              = 10
+  event_source_enabled    = true
+  maximum_concurrency     = var.lambda_max_concurrency
   function_response_types = ["ReportBatchItemFailures"]
-}
 
-resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
-  alarm_name          = "${var.project_name}-lambda-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 5
-  alarm_description   = "Alert when Lambda function has errors"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.image_processor.function_name
-  }
-
-  tags = {
-    Name        = "${var.project_name}-lambda-error-alarm"
-    Environment = "production"
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
-  alarm_name          = "${var.project_name}-lambda-throttles"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Throttles"
-  namespace           = "AWS/Lambda"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 1
-  alarm_description   = "Alert when Lambda function is throttled"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.image_processor.function_name
-  }
-
-  tags = {
-    Name        = "${var.project_name}-lambda-throttle-alarm"
-    Environment = "production"
-  }
+  tags = local.common_tags
 }

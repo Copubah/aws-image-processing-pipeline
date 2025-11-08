@@ -1,51 +1,51 @@
 output "upload_bucket_name" {
   description = "Name of the upload S3 bucket"
-  value       = aws_s3_bucket.upload.id
+  value       = module.upload_bucket.bucket_id
 }
 
 output "upload_bucket_arn" {
   description = "ARN of the upload S3 bucket"
-  value       = aws_s3_bucket.upload.arn
+  value       = module.upload_bucket.bucket_arn
 }
 
 output "processed_bucket_name" {
   description = "Name of the processed S3 bucket"
-  value       = aws_s3_bucket.processed.id
+  value       = module.processed_bucket.bucket_id
 }
 
 output "processed_bucket_arn" {
   description = "ARN of the processed S3 bucket"
-  value       = aws_s3_bucket.processed.arn
+  value       = module.processed_bucket.bucket_arn
 }
 
 output "sqs_queue_url" {
   description = "URL of the SQS queue"
-  value       = aws_sqs_queue.image_queue.url
+  value       = module.image_queue.queue_url
 }
 
 output "sqs_queue_arn" {
   description = "ARN of the SQS queue"
-  value       = aws_sqs_queue.image_queue.arn
+  value       = module.image_queue.queue_arn
 }
 
 output "dlq_url" {
   description = "URL of the Dead Letter Queue"
-  value       = aws_sqs_queue.image_dlq.url
+  value       = module.image_queue.dlq_url
 }
 
 output "dlq_arn" {
   description = "ARN of the Dead Letter Queue"
-  value       = aws_sqs_queue.image_dlq.arn
+  value       = module.image_queue.dlq_arn
 }
 
 output "lambda_function_name" {
   description = "Name of the Lambda function"
-  value       = aws_lambda_function.image_processor.function_name
+  value       = module.lambda_processor.function_name
 }
 
 output "lambda_function_arn" {
   description = "ARN of the Lambda function"
-  value       = aws_lambda_function.image_processor.arn
+  value       = module.lambda_processor.function_arn
 }
 
 output "lambda_role_arn" {

@@ -17,7 +17,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           region = var.aws_region
           title  = "Lambda Metrics"
           dimensions = {
-            FunctionName = aws_lambda_function.image_processor.function_name
+            FunctionName = module.lambda_processor.function_name
           }
         }
       },
@@ -34,7 +34,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           region = var.aws_region
           title  = "SQS Queue Metrics"
           dimensions = {
-            QueueName = aws_sqs_queue.image_queue.name
+            QueueName = module.image_queue.queue_name
           }
         }
       },
@@ -49,7 +49,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           region = var.aws_region
           title  = "Dead Letter Queue"
           dimensions = {
-            QueueName = aws_sqs_queue.image_dlq.name
+            QueueName = module.image_queue.dlq_name
           }
         }
       },
@@ -72,7 +72,7 @@ resource "aws_cloudwatch_dashboard" "main" {
 
 resource "aws_cloudwatch_log_metric_filter" "image_processing_errors" {
   name           = "${var.project_name}-processing-errors"
-  log_group_name = aws_cloudwatch_log_group.lambda_logs.name
+  log_group_name = module.lambda_processor.log_group_name
   pattern        = "[time, request_id, level = ERROR*, ...]"
 
   metric_transformation {

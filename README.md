@@ -331,19 +331,45 @@ Maximum image size: 50MB
 ## Project Structure
 
 ```
-.
-├── provider.tf              # Terraform provider configuration
-├── main.tf                  # Core infrastructure resources
-├── monitoring.tf            # CloudWatch dashboards and alarms
-├── variables.tf             # Input variables
-├── outputs.tf               # Output values
-├── terraform.tfvars.example # Example configuration
+aws-image-processing-pipeline/
+├── modules/
+│   ├── lambda/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── s3/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── sqs/
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
 ├── lambda/
-│   ├── handler.py          # Lambda function code
-│   ├── requirements.txt    # Python dependencies
-│   └── test_handler.py     # Unit tests
-└── scripts/
-    ├── deploy.sh           # Automated deployment
-    ├── test-upload.sh      # Test image upload
-    └── check-dlq.sh        # Check DLQ messages
+│   ├── handler.py
+│   ├── requirements.txt
+│   └── test_handler.py
+├── scripts/
+│   ├── deploy.sh
+│   ├── test-upload.sh
+│   └── check-dlq.sh
+├── main.tf
+├── variables.tf
+├── outputs.tf
+├── provider.tf
+├── monitoring.tf
+├── terraform.tfvars.example
+├── .gitignore
+├── README.md
+└── DEPLOYMENT_CHECKLIST.md
 ```
+
+### Modular Architecture
+
+This project uses a modular Terraform structure for better reusability and maintainability:
+
+- **S3 Module**: Configurable buckets with encryption, versioning, lifecycle policies
+- **SQS Module**: Queue with optional DLQ, encryption, and long polling
+- **Lambda Module**: Function with event source mapping, logging, and tracing
+
+Each module is self-contained and can be reused in other projects.
