@@ -1,6 +1,15 @@
 # AWS Asynchronous Image Processing Pipeline
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/Copubah/aws-image-processing-pipeline)
+[![Terraform](https://img.shields.io/badge/Terraform-1.0+-623CE4?logo=terraform)](https://www.terraform.io/)
+[![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900?logo=amazon-aws)](https://aws.amazon.com/)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
+
 Production-ready serverless image processing pipeline on AWS using Terraform. Images uploaded to an S3 bucket are automatically resized and stored in a processed bucket with full monitoring and error handling.
+
+**Repository:** https://github.com/Copubah/aws-image-processing-pipeline
+
+**GitHub Repository:** https://github.com/Copubah/aws-image-processing-pipeline
 
 ## Architecture
 
