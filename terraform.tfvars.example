@@ -1,0 +1,14 @@
+aws_region                = "us-east-1"
+project_name              = "image-processor"
+upload_bucket_name        = "my-image-uploads-bucket"
+processed_bucket_name     = "my-processed-images-bucket"
+image_width               = 800
+image_height              = 600
+sqs_visibility_timeout    = 300
+sqs_message_retention     = 345600
+dlq_max_receive_count     = 3
+upload_retention_days     = 90
+log_retention_days        = 30
+log_level                 = "INFO"
+lambda_reserved_concurrency = 10
+lambda_max_concurrency    = 5
