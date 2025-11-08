@@ -7,8 +7,6 @@
 
 Production-ready serverless image processing pipeline on AWS using Terraform. Images uploaded to an S3 bucket are automatically resized and stored in a processed bucket with full monitoring and error handling.
 
-**Repository:** https://github.com/Copubah/aws-image-processing-pipeline
-
 **GitHub Repository:** https://github.com/Copubah/aws-image-processing-pipeline
 
 ## Architecture
